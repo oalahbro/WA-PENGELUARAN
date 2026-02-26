@@ -152,16 +152,16 @@ async function setIncome(user, totalIncome, targetTabungan, sendResponse) {
   }
 }
 
-async function getTotalPengeluaranBulanIni(user) {
+async function getTotalPengeluaranBulanIni(user, targetBulan) {
   const doc = await initDoc();
   const sheet = doc.sheetsByTitle["Transaksi"];
   const rows = await sheet.getRows();
 
-  const now = dayjs(); // Bulan & tahun saat ini
+  const now = targetBulan; // Bulan & tahun saat ini
 
   const filtered = rows.filter((r) => {
-    const rowUser = r.User || r._rawData[2];
-    const timestamp = r.Timestamp || r._rawData[1];
+    const rowUser = r.User || r._rawData[2];       // kolom User
+    const timestamp = r.Timestamp || r._rawData[1]; // kolom Timestamp
 
     if (rowUser !== user || !timestamp) return false;
 
@@ -169,16 +169,20 @@ async function getTotalPengeluaranBulanIni(user) {
     return tgl.isValid() && tgl.month() === now.month() && tgl.year() === now.year();
   });
 
-  const total = filtered.reduce((acc, r) => acc + parseFloat(r.Nominal || r._rawData[4] || 0), 0);
+  const total = filtered.reduce(
+    (acc, r) => acc + parseFloat(r.Nominal || r._rawData[4] || 0),
+    0
+  );
+
   return total;
 }
 
-async function getIncomeData(user) {
+async function getIncomeData(user, targetDate = dayjs()) {
   const doc = await initDoc();
   const sheet = doc.sheetsByTitle["Income"];
   const rows = await sheet.getRows();
 
-  const bulanAwal = dayjs().startOf("month").format("YYYY-MM"); // format sesuai datamu: 2025-06
+  const bulanAwal = targetDate.startOf("month").format("YYYY-MM"); // contoh: 2025-07
 
   const foundRow = rows.find((r) => {
     const rowUser = r.User || r._rawData[0];
@@ -198,6 +202,39 @@ async function getIncomeData(user) {
   return dataObj;
 }
 
+async function tambahIncome(user, jumlah, sendResponse) {
+  const doc = await initDoc();
+  const sheet = doc.sheetsByTitle["Income"];
+  const rows = await sheet.getRows();
+  const bulanIni = dayjs().format("YYYY-MM");
+
+  const row = rows.find(r => (r.User || r._rawData[0]) === user && (r.BulanAwal || r._rawData[1]) === bulanIni);
+  // const existing = rows.find(
+  //   (r) => (r.User || r._rawData[0]) === user && (r.BulanAwal || r._rawData[1]) === timestamp
+  // );
+
+  if (!row) {
+    throw new Error("Data income bulan ini belum di-set.");
+  }
+  
+  const incomeLama = parseInt(row.IncomeBulan || row._rawData[2]) || 0;
+  const targetLama = parseInt(row.TargetTabungan || row._rawData[3]) || 0;
+
+  const incomeBaru = incomeLama + jumlah;
+  const targetBaru = targetLama + jumlah;
+
+  const rowUp = row._rowNumber - 2 ;
+  rows[rowUp].assign({ IncomeBulan: incomeBaru, TargetTabungan: targetBaru})
+  await rows[rowUp].save();
+  const bulan = dayjs().format("MMMM YYYY");
+
+  if (sendResponse) {
+      await sendResponse(
+        `✅ Income bulan ${bulan} diperbarui.\n💰 Income: Rp${incomeBaru.toLocaleString()}\n🎯 Target tabungan: Rp${targetBaru.toLocaleString()}`
+      );
+    }
+}
+
 module.exports = {
   initDoc,
   appendTransaksi,
@@ -207,4 +244,5 @@ module.exports = {
   hapusTransaksiRow,
   setIncome,
   getIncomeData,
+  tambahIncome,
 };

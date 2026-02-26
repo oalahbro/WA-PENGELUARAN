@@ -2,7 +2,7 @@ require("dotenv").config();
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require("baileys");
 const pino = require("pino");
 const schedule = require("node-schedule");
-const {initDoc, appendTransaksi, getTotalPengeluaranBulanIni, laporanHariIni, hapusTransaksiRow, setIncome, getIncomeData} = require("./googleSheet");
+const {initDoc, appendTransaksi, getTotalPengeluaranBulanIni, laporanHariIni, hapusTransaksiRow, setIncome, getIncomeData, tambahIncome} = require("./googleSheet");
 const qrcode = require("qrcode-terminal");
 const os = require("os");
 const axios = require("axios");
@@ -346,11 +346,37 @@ Contoh:
       );
     }
     else if (text.toLowerCase().startsWith("progress tabungan")) {
-      const incomeData = await getIncomeData(sender);
+      let targetBulan = dayjs().startOf("month"); // default bulan ini
+      const parts = text.toLowerCase().split(" ");
+
+  // Cek apakah ada nama bulan setelah "progress tabungan"
+  if (parts.length >= 3) {
+    const namaBulan = parts[2]; // misalnya: "juli"
+    const bulanMap = {
+      januari: 0,
+      februari: 1,
+      maret: 2,
+      april: 3,
+      mei: 4,
+      juni: 5,
+      juli: 6,
+      agustus: 7,
+      september: 8,
+      oktober: 9,
+      november: 10,
+      desember: 11
+    };
+
+    if (bulanMap[namaBulan] !== undefined) {
+      const tahunSekarang = dayjs().year();
+      targetBulan = dayjs().month(bulanMap[namaBulan]).year(tahunSekarang).startOf("month");
+    }
+  }
+      const incomeData = await getIncomeData(sender, targetBulan);
 
       if (!incomeData) {
         await sock.sendMessage(sender, {
-          text: "❗ Belum ada data income bulan ini. Gunakan perintah: `set income <jumlah> <target tabungan>`"
+          text: `❗ Belum ada data income untuk ${targetBulan.format("MMMM YYYY")}.`
         });
         return;
       }
@@ -358,11 +384,11 @@ Contoh:
       const income = parseFloat(incomeData.IncomeBulan || incomeData._rawData[2] || 0);
       const target = parseFloat(incomeData.TargetTabungan || incomeData._rawData[3] || 0);
 
-      const totalPengeluaran = await getTotalPengeluaranBulanIni(sender);
+      const totalPengeluaran = await getTotalPengeluaranBulanIni(sender, targetBulan);
       const tabunganSaatIni = income - totalPengeluaran;
       const sisaTarget = target - tabunganSaatIni;
       const sisaBudget = tabunganSaatIni - target;
-      const bulan = dayjs().format("MMMM YYYY");
+      const bulan = targetBulan.format("MMMM YYYY");
 
       const status =
         sisaTarget <= 0
@@ -370,16 +396,17 @@ Contoh:
           : `⚠️ Target tabungan belum tercapai. Kurang Rp${sisaTarget.toLocaleString()}`;
 
       await sock.sendMessage(sender, {
-        text: `📊 *Progress Tabungan Bulan Ini (${bulan}):*\n
+        text: `📊 *Progress Tabungan (${bulan}):*\n
     💰 Income Bulanan: *Rp${income.toLocaleString()}*
     🎯 Target Tabungan: *Rp${target.toLocaleString()}*
     💸 Total Pengeluaran: *Rp${totalPengeluaran.toLocaleString()}*
     💼 Tabungan Saat Ini: *Rp${tabunganSaatIni.toLocaleString()}*
-    👛 Sisa Budget Bulan Ini : *Rp${sisaBudget.toLocaleString()}*
+    👛 Sisa Budget: *Rp${sisaBudget.toLocaleString()}*
 
     ${status}`
       });
     }
+
 
     else if (text.startsWith("+")) {
       const lines = text.trim().split("\n").filter(line => line.startsWith("+"));
@@ -428,6 +455,28 @@ Contoh:
       await sock.sendMessage(sender, { text: hasilText });
     }
 
+    else if (text.toLowerCase().startsWith("add income")) {
+      const incomeData = await getIncomeData(sender);
+        if (!incomeData) {
+          await sock.sendMessage(sender, {
+            text: "❗ Belum ada data income bulan ini. Gunakan perintah: `set income <jumlah> tabungan <target>`"
+          });
+          return;
+        }
+      const args = text.split(" ");
+      if (args.length < 3 || isNaN(args[2])) {
+        await sock.sendMessage(sender, { text: "❌ Format salah. Gunakan: *add income <jumlah>*\nContoh: add income 50000" });
+        return;
+      }
+
+      const jumlah = parseInt(args[2]);
+      try {
+        await tambahIncome(sender, jumlah, (msg) =>
+        sock.sendMessage(sender, { text: msg }))
+      } catch (e) {
+        await sock.sendMessage(sender, { text: `❌ ${e.message}` });
+      }
+    }
 
     else if (text.toLowerCase() === "!ping") {
       const start = Date.now();

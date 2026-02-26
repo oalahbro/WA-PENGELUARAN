@@ -8,8 +8,9 @@
   },
   "dependencies": {
     "@hapi/boom": "^10.0.1",
+    "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "axios": "^1.10.0",
-    "baileys": "^6.7.18",
+    "baileys": "^7.0.0-rc.9",
     "dayjs": "^1.11.13",
     "dotenv": "^16.5.0",
     "google-auth-library": "^9.15.1",
@@ -17,7 +18,7 @@
     "googleapis": "^133.0.0",
     "node-cron": "^3.0.2",
     "node-schedule": "^2.1.1",
-    "openai": "^4.29.0",
+    "openai": "^4.104.0",
     "qrcode-terminal": "^0.12.0"
   }
 }
